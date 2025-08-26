@@ -13,14 +13,392 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Core User Model
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  avatar        String?
+  role          UserRole @default(USER)
+  status        UserStatus @default(ACTIVE)
+  googleTokens  String?  // JSON Google OAuth tokens
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  // Relations
+  sessions      Session[]
+  activities    UserActivity[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  emails        Email[]
+  
+  @@map("users")
 }
 
+enum UserRole {
+  USER
+  ADMIN
+  SECURITY_ADMIN
+  AI_ADMIN
+  DEVOPS_ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING
+}
+
+// User Sessions
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("sessions")
+}
+
+// System Layers
+model SystemLayer {
+  id          String      @id @default(cuid())
+  name        String      @unique
+  description String
+  status      LayerStatus @default(ACTIVE)
+  health      Int         @default(100)
+  version     String?
+  config      String      // JSON configuration
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  metrics     LayerMetric[]
+  components  SystemComponent[]
+  
+  @@map("system_layers")
+}
+
+enum LayerStatus {
+  ACTIVE
+  INACTIVE
+  DEGRADED
+  MAINTENANCE
+  ERROR
+}
+
+// Layer Metrics
+model LayerMetric {
+  id          String   @id @default(cuid())
+  layerId     String
+  name        String
+  value       Float
+  unit        String?
+  timestamp   DateTime @default(now())
+  
+  layer       SystemLayer @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  
+  @@map("layer_metrics")
+}
+
+// System Components
+model SystemComponent {
+  id          String          @id @default(cuid())
+  layerId     String
+  name        String
+  type        ComponentType
+  status      ComponentStatus @default(ACTIVE)
+  version     String?
+  config      String          // JSON configuration
+  metadata    String?         // Additional metadata as JSON
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  layer       SystemLayer     @relation(fields: [layerId], references: [id], onDelete: Cascade)
+  
+  @@map("system_components")
+}
+
+enum ComponentType {
+  SERVICE
+  DATABASE
+  CACHE
+  QUEUE
+  API
+  WORKER
+  GATEWAY
+  PROXY
+  MONITOR
+  SECURITY
+}
+
+enum ComponentStatus {
+  ACTIVE
+  INACTIVE
+  STARTING
+  STOPPING
+  ERROR
+  MAINTENANCE
+}
+
+// AI Core Models
+model AIModel {
+  id          String      @id @default(cuid())
+  name        String
+  version     String
+  type        ModelType
+  status      ModelStatus @default(ACTIVE)
+  accuracy    Float?
+  performance String      // JSON performance metrics
+  config      String      // JSON configuration
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  // Relations
+  training    ModelTraining[]
+  inferences  ModelInference[]
+  
+  @@map("ai_models")
+}
+
+enum ModelType {
+  LLM
+  EMBEDDING
+  CLASSIFICATION
+  GENERATION
+  TRANSLATION
+  SUMMARIZATION
+  RAG
+  AGENT
+}
+
+enum ModelStatus {
+  ACTIVE
+  TRAINING
+  EVALUATING
+  DEPRECATED
+  ERROR
+}
+
+// Model Training
+model ModelTraining {
+  id          String   @id @default(cuid())
+  modelId     String
+  dataset     String
+  parameters  String   // JSON training parameters
+  metrics     String   // JSON training metrics
+  status      TrainingStatus @default(PENDING)
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+  
+  model       AIModel  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  @@map("model_training")
+}
+
+enum TrainingStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// Model Inference
+model ModelInference {
+  id          String   @id @default(cuid())
+  modelId     String
+  input       String   // JSON input
+  output      String   // JSON output
+  tokens      Int?
+  latency     Int?     // in milliseconds
+  cost        Float?
+  createdAt   DateTime @default(now())
+  
+  model       AIModel  @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  
+  @@map("model_inference")
+}
+
+// Security Models
+model SecurityEvent {
+  id          String           @id @default(cuid())
+  type        SecurityEventType
+  severity    SecuritySeverity
+  description String
+  source      String
+  metadata    String?          // JSON metadata
+  resolved    Boolean          @default(false)
+  resolvedAt  DateTime?
+  resolvedBy  String?
+  createdAt   DateTime         @default(now())
+  
+  @@map("security_events")
+}
+
+enum SecurityEventType {
+  LOGIN_ATTEMPT
+  THREAT_DETECTED
+  ANOMALY_DETECTED
+  POLICY_VIOLATION
+  DATA_BREACH
+  DDOS_ATTEMPT
+  MALWARE_DETECTED
+  PHISHING_ATTEMPT
+  CONFIGURATION_CHANGE
+  AUDIT_EVENT
+}
+
+enum SecuritySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// Audit Logs
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  action      String
+  resource    String
+  metadata    String?  // JSON metadata
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+  
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@map("audit_logs")
+}
+
+// User Activity
+model UserActivity {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String
+  resource    String?
+  metadata    String?  // JSON metadata
+  createdAt   DateTime @default(now())
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("user_activities")
+}
+
+// Notifications
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  severity    NotificationSeverity @default(INFO)
+  read        Boolean          @default(false)
+  metadata    String?          // JSON metadata
+  createdAt   DateTime         @default(now())
+  
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("notifications")
+}
+
+enum NotificationType {
+  SYSTEM
+  SECURITY
+  AI_INSIGHT
+  AUTOMATION
+  MAINTENANCE
+  USER_ACTION
+  BILLING
+  COMPLIANCE
+}
+
+enum NotificationSeverity {
+  INFO
+  WARNING
+  ERROR
+  CRITICAL
+}
+
+// System Configuration
+model SystemConfig {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  value       String
+  description String?
+  category    String?
+  isSensitive Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("system_configs")
+}
+
+// Deployment Models
+model Deployment {
+  id          String         @id @default(cuid())
+  environment String
+  version     String
+  status      DeploymentStatus @default(PENDING)
+  config      String         // JSON configuration
+  startedAt   DateTime?
+  completedAt DateTime?
+  logs        String?        // JSON logs
+  createdAt   DateTime       @default(now())
+  
+  @@map("deployments")
+}
+
+enum DeploymentStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
+// Email Model for Gmail integration
+model Email {
+  id           String      @id @default(cuid())
+  gmailId      String      @unique // Gmail message ID
+  userId       String
+  from         String?
+  subject      String?
+  snippet      String?
+  body         String?
+  htmlBody     String?
+  received     DateTime
+  read         Boolean     @default(false)
+  starred      Boolean     @default(false)
+  category     EmailCategory? @default(FOLLOW_UP)
+  urgency      Int?        @default(5)
+  suggestedAction String?
+  aiProcessed  Boolean     @default(false)
+  labels       String?     // JSON array of labels
+  attachments  String?     // JSON array of attachments
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  
+  // Relations
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("emails")
+}
+
+enum EmailCategory {
+  PRIORITY
+  ACTION_REQUIRED
+  FOLLOW_UP
+  PROMO
+  NOISE
+}
+
+// Legacy models (keeping for compatibility)
 model Post {
   id        String   @id @default(cuid())
   title     String
